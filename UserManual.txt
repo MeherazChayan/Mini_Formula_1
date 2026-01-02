@@ -1,0 +1,161 @@
+USER MANUAL — Mini F1 Racing Project 
+
+1) What this is
+This is a Python + PyOpenGL racing game where we pick a track, pick a team, and race one lap against AI opponents.
+We can play in:
+- TPP-3D (third-person 3D camera) or
+- FPP (first-person style 2D view)
+We also have optional cheat features like nitro, autopilot, and teleport.
+
+2) How to run
+2.1 Requirements
+- Python 3.x installed
+- PyOpenGL installed
+- GLUT available (FreeGLUT recommended on Windows)
+
+2.2 Install (typical)
+Open a terminal / CMD / PowerShell and run:
+- pip install PyOpenGL PyOpenGL_accelerate
+
+If GLUT errors happen, install FreeGLUT for Windows or ensure GLUT is available on your OS.
+
+2.3 Start the game
+Run the main Python file (example):
+- python main.py
+(Use your actual filename if it is different.)
+
+3) Game flow (menus → race → results)
+Step 1: Track selection
+- Press 1 / 2 / 3 to select a track.
+- Press ENTER to confirm and go to team selection.
+
+Step 2: Team selection
+- Press 1–9 to select team 1–9
+- Press 0 to select the 10th team
+- Press ENTER to start the race
+- Press B to go back to track selection
+
+Step 3: Race
+- Drive the car and complete the required laps (default: 1).
+- Opponents drive automatically.
+- You can switch cameras, pause, or use cheats (optional).
+
+Step 4: Results
+After finishing, a results screen shows the final standings.
+
+4) Controls (race)
+4.1 Driving
+- W: accelerate
+- S: brake / reverse
+- A: steer left
+- D: steer right
+
+4.2 Pause and basic navigation
+- SPACE: pause / resume
+- R: restart race
+- M: return to main menu (track selection)
+- ESC: exit the game
+
+4.3 Camera controls
+A) Toggle camera mode
+- Right mouse button click: toggle FPP on/off
+
+B) TPP-3D camera adjustments (only when NOT in FPP)
+- Left Arrow: rotate camera left (yaw)
+- Right Arrow: rotate camera right (yaw)
+- Up Arrow: increase pitch (look more downward)
+- Down Arrow: decrease pitch (look more level)
+- Page Up: zoom in (reduce distance)
+- Page Down: zoom out (increase distance)
+
+C) FPP camera adjustments (when in FPP)
+- Some builds support FPP arrow key adjustments:
+  - Left/Right Arrow: rotate FPP view direction
+  - Up/Down Arrow: zoom in/out
+If our current build does not support this yet, we only toggle FPP on/off with right-click.
+
+5) Understanding the screen
+5.1 HUD (top bar)
+We show:
+- Track name
+- Team name + team color box
+- Current view mode (TPP-3D or FPP)
+
+5.2 Lap counter (bottom-left)
+- Lap: current / total laps
+
+5.3 Cheat indicator (top-right, when cheat is ON)
+- CHEAT ON
+- NITRO: ON/OFF (ON when holding N)
+- AUTO: ON/OFF
+- Quick hints: T teleport, N hold nitro
+
+5.4 Pause overlay
+When paused:
+- “PAUSED” message is shown
+- “Press SPACE to resume” appears
+
+6) How lap counting works (important)
+We do NOT count a lap just by crossing the finish line.
+To complete a lap properly:
+1) We must cross the checkpoint line (midpoint) in the forward direction.
+2) Then we must cross the start/finish line in the forward direction.
+Only then does the lap increase.
+
+7) Opponents
+- Opponents are other teams driving on the same track.
+- They follow the track automatically at different speeds and lane offsets.
+- They appear as F1 cars in their team colors.
+- The results screen ranks everyone based on finishing time, then progress if not finished.
+
+8) Cheat mode (optional)
+Cheats are mainly for fun and testing.
+
+8.1 Toggle cheat mode
+- C: toggle cheat mode ON/OFF
+
+8.2 Autopilot
+- P: toggle autopilot ON/OFF (only works when cheat mode is ON)
+Autopilot tries to:
+- follow the track,
+- stay near the center,
+- correct itself if it touches the border.
+
+8.3 Nitro
+- Hold N: nitro boost (only while cheat mode is ON)
+Nitro:
+- increases acceleration and top speed,
+- reduces friction so the car holds speed longer.
+
+8.4 Teleport
+- T: teleport forward to help progression (only while cheat mode is ON)
+Typical use:
+- if we are stuck, we can jump near the checkpoint or near the finish area.
+
+9) Results screen controls
+When results are displayed:
+- R: restart race (same track/team selection remains active)
+- M: go back to main menu (track selection)
+- ESC: exit the game
+
+10) Tips for smooth play
+- Start in TPP-3D for easier steering and spatial awareness.
+- Use small steering inputs at high speed. Hard steering at high speed can push us to the track boundary.
+- If we want to practice, turn on cheat mode and use autopilot to learn the track.
+- If the game feels too fast or too slow, adjust ACCEL, FRICTION, MAX_FWD in the code.
+
+11) Troubleshooting
+11.1 “GLUT not found” / “OpenGL context error”
+- Install FreeGLUT (Windows) or ensure GLUT is installed on your OS.
+- Confirm PyOpenGL is installed:
+  - pip show PyOpenGL
+
+11.2 Black window or nothing draws
+- Update GPU drivers.
+- Try running on a machine with proper OpenGL support.
+
+11.3 Low FPS
+- Close other heavy programs.
+- Reduce window size.
+- Disable TPP-3D (set TPP_3D_ENABLED = False) to run in simple 2D mode.
+

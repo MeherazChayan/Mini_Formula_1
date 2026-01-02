@@ -1,0 +1,263 @@
+SPECIFICATIONS - Mini F1 RACING PROJECT (PyOpenGL)
+
+1) Overview
+Our project is a lightweight Formula-1 style racing game built in Python using PyOpenGL + GLUT.
+We provide:
+- Track selection (3 tracks)
+- Team selection (10 teams)
+- A single-lap race with AI opponents
+- Two camera modes: TPP-3D and FPP
+- Cheat features (nitro, autopilot, teleport, debug overlays)
+- Pause and a results screen
+
+2) Goals
+- Deliver smooth, responsive car control and clear race progression (lap + checkpoint logic).
+- Provide an engaging camera system (TPP-3D for normal play, FPP for immersion).
+- Include basic AI opponents to create race context.
+- Keep the project simple to run in a standard PyOpenGL environment.
+
+3) Platform and Dependencies
+3.1 Runtime
+- Python 3.x
+- PyOpenGL
+- PyOpenGL_accelerate (recommended)
+- GLUT implementation (FreeGLUT on Windows recommended)
+
+3.2 Hardware
+- Any GPU/CPU capable of running OpenGL via the installed drivers.
+- Target: stable 60 FPS on typical lab machines.
+
+4) Game World and Rendering
+4.1 Coordinate System
+- World size: WORLD_W x WORLD_H = 2000 x 1600 units
+- Window size: WIN_W x WIN_H = 1000 x 800 pixels (resizable)
+- Track and cars exist in world coordinates and are rendered either:
+  - FPP: 2D orthographic in car-centric coordinates
+  - TPP-3D: 3D camera using perspective projection looking at the car
+
+4.2 Track Rendering Layers (Z ordering)
+We draw using small Z offsets to avoid z-fighting:
+- Grass/base: z ~ 0.00
+- Curbs: z ~ 0.05
+- Asphalt: z ~ 0.10
+- Finish grid: z ~ 0.12
+- Debug overlays (checkpoint/start/cross marker): z ~ 0.14
+
+4.3 Track Geometry
+Each track is defined by:
+- A closed polyline center path (list of points)
+- Track width (road width)
+From the center path we compute:
+- Left boundary polyline (offset by +half width)
+- Right boundary polyline (offset by -half width)
+- Outer curb strips derived from boundary normals
+We use mitered joins with a limit to avoid extreme spikes at corners.
+
+4.4 Finish Grid
+A checkered start/finish grid is drawn at the start line using:
+- FINISH_COLS = 16, FINISH_ROWS = 4, FINISH_DEPTH = 90.0
+
+5) Menus and Game States
+We use a simple state machine:
+
+STATE_TRACK_MENU:
+- Shows track cards and previews
+- User chooses track: keys 1/2/3
+- Enter moves to team menu
+
+STATE_TEAM_MENU:
+- Shows 10 teams with color swatches
+- User chooses team: keys 1–9, 0 for the 10th
+- Enter starts the race
+- B returns to track menu
+
+STATE_RACE:
+- Active gameplay (movement, AI updates, camera updates)
+- Pause supported via SPACE
+
+STATE_RESULTS:
+- Shows final standings (player + opponents)
+- R restarts race
+- M returns to main menu
+- ESC exits program
+
+6) Player Car: Physics and Controls
+6.1 Car Model
+- Car length (CAR_L): 60 units
+- Car width (CAR_W): 30 units
+
+6.2 Movement Physics
+We model speed along the car forward axis:
+- Acceleration (ACCEL): increases forward speed while W is held
+- Braking (BRAKE): reduces forward speed quickly when S is held and moving forward
+- Reverse: S drives backward once speed reaches <= 0
+- Friction (FRICTION): decelerates when no throttle/brake input is present
+- Speed limits: MAX_FWD (forward), MAX_REV (reverse)
+
+6.3 Steering
+- Steering rate depends on current speed:
+  - STEER_DEG_SLOW at low speed up to STEER_DEG at higher speeds
+- Reverse steering is inverted to feel natural.
+
+6.4 Player Controls (Race)
+Keyboard:
+- W: accelerate
+- S: brake / reverse
+- A: steer left
+- D: steer right
+- SPACE: pause/resume
+- R: restart race
+- M: return to main menu
+- ESC: exit
+
+Mouse:
+- Right click: toggle FPP mode on/off
+
+7) Cameras
+7.1 TPP-3D Camera (default)
+- Perspective camera looking at the car
+- Adjustable using arrow keys and PageUp/PageDown
+Parameters:
+- Yaw offset: tpp_yaw_offset (degrees)
+- Pitch: tpp_pitch_deg (degrees)
+- Distance: tpp_dist (world units)
+- FOV: tpp_fov
+
+TPP-3D controls (race, when NOT in FPP):
+- Left/Right arrow: yaw around the car
+- Up/Down arrow: change pitch
+- PageUp/PageDown: zoom in/out (distance)
+
+7.2 FPP Camera
+We use a 2D orthographic view centered on the car, rotated to face the car direction.
+- View window size: fpp_view_w x fpp_view_h
+- Car sits slightly below center (FPP_CAR_SCREEN_OFFSET) to show more of the road ahead.
+- fpp_cam_ang follows either:
+  - car_ang (normal driving)
+  - track tangent direction when cheat autopilot is active (for stable centering)
+
+FPP controls (race, when IN FPP):
+- Left/Right arrow: rotate camera yaw (fpp_yaw_offset)
+- Up/Down arrow: zoom in/out by changing fpp_view_w/fpp_view_h
+
+7.3 Camera Update
+- We update camera orientation each frame using smoothing so rotations feel stable.
+
+8) Track Rules: Lap and Checkpoint Logic
+We enforce correct lap completion using two cross-lines:
+- Start/finish line at start_s
+- Midpoint checkpoint at cp_s
+
+A lap is counted only when:
+1) We cross the checkpoint line in the forward direction.
+2) Then we cross the start line in the forward direction.
+
+Forward direction is determined by dot product of car velocity with the track tangent at that line.
+
+Race ends when:
+- lap >= LAPS_TO_FINISH
+
+9) Opponents (AI Cars)
+9.1 Spawning
+We spawn one opponent per remaining team (all teams except the player team).
+Opponents are placed behind the player on the track centerline with spacing.
+Each opponent has:
+- team index
+- progress s along track
+- constant speed (varies slightly per opponent)
+- lateral offset (lane position)
+- lap counter
+- checkpoint flag
+- finished flag and finish time
+
+9.2 Movement
+Opponents move by advancing s along the track each frame:
+- s = s + speed * dt (wrapped by track length)
+Their world position is derived from:
+- track point at s + lateral shift along the local normal
+We constrain them back onto the track if needed.
+
+9.3 Finish Tracking
+Opponents use the same lap/checkpoint principle (implemented via s-crossing logic).
+We store finish time for ranking.
+
+10) Cheat Features
+Cheat mode exists for debugging and fun. It is optional in gameplay.
+
+Cheat toggles:
+- C: toggle cheat_on
+- P: toggle autopilot (only while cheat_on)
+- N: hold nitro (only while cheat_on)
+- T: teleport to next target line (checkpoint or finish, based on progress)
+
+10.1 Nitro
+When holding N during cheat mode:
+- Increases acceleration and max forward speed
+- Reduces friction to maintain speed more easily
+
+10.2 Autopilot
+When autopilot is ON (cheat_on + cheat_auto):
+- We compute the closest track center and lateral error
+- We compute a lookahead target point ahead on the track
+- We steer toward that target while pushing toward center
+- If we drift too far toward an edge, we force a corrective steer
+- If we hit the boundary, we auto-turn left and push inward (cooldown-protected)
+
+10.3 Debug Overlays
+When cheat_on is enabled, we show:
+- Checkpoint line (highlighted)
+- Start line (highlighted)
+- A cross marker at the closest point on centerline relative to the car
+
+11) Pause
+- SPACE toggles pause during STATE_RACE.
+- When paused:
+  - Player and opponent updates stop
+  - We may still update camera smoothing (so it doesn’t jump when resuming)
+  - A “PAUSED” overlay is displayed
+
+12) HUD and UI
+During race we show:
+- Track name
+- Team name with color box
+- Current view mode (TPP-3D or FPP)
+- Lap counter (Lap: current/total)
+- Cheat status (if enabled): cheat, nitro state, autopilot state, key hints
+- Pause overlay when paused
+
+13) Results Screen
+After finishing, we show an ordered list of:
+- Player + all opponents
+Sorted by:
+- Finished first (earlier finish time ranks higher)
+- If not finished, higher progress ranks higher
+Controls:
+- R restart
+- M main menu
+- ESC exit
+
+14) Non-Functional Requirements
+NFR-01 Performance: We target a stable 60 FPS on standard machines.
+NFR-02 Responsiveness: Input should feel immediate (no noticeable lag).
+NFR-03 Robustness: Car and opponents must remain within valid world bounds.
+NFR-04 Portability: Should run on typical Windows lab setups with Python + FreeGLUT.
+NFR-05 Readability: Code should remain modular with clear sections (tracks, camera, physics, UI).
+
+15) Constraints and Assumptions
+- We assume GLUT is available and properly installed.
+- We use simple physics (no tire slip model, no suspension).
+- Track is a closed loop derived from a small set of control points.
+- Opponent AI is simplified (constant speed along track parameter s).
+- Collision is “constrain-to-track” rather than full body collision.
+
+16) Acceptance Criteria (Quick Checklist)
+- We can select track and team and enter the race.
+- In TPP-3D, arrow keys adjust camera (yaw/pitch) and PageUp/PageDown adjust distance.
+- Right-click toggles FPP mode.
+- In FPP, LEFT/RIGHT arrows rotate the camera view; UP/DOWN arrows zoom.
+- SPACE pauses and resumes gameplay without glitches.
+- Lap only counts when checkpoint then start line are crossed in forward direction.
+- Results screen appears after finishing and supports R/M/ESC controls.
+- Cheat mode: C toggles, P toggles autopilot, N provides nitro, T teleports.
+- Autopilot does not get stuck sliding along borders; it corrects inward.
+

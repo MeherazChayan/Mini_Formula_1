@@ -1,0 +1,34 @@
+Contribution.txt
+F1 Racing Project (PyOpenGL)
+
+Member 1
+Name       : Md. Meheraz Hossain Chayan
+Student ID : 22299263
+Contribution:
+- Implemented core game loop (display/tick) and state machine (track menu, team menu, race, results).
+- Built player car physics (acceleration, braking, friction, steering, speed limits) and track boundary constraint.
+- Implemented lap + checkpoint logic, race completion, and results ranking integration.
+Cheat Mode Feature Owned:
+- Nitro Boost (Hold N): increases acceleration and max speed while reducing friction (cheat mode only).
+
+Member 2
+Name       : A.A.M Miad Islam 
+Student ID : 22299417
+Contribution:
+- Designed and implemented track system (track polylines, left/right offsets, curbs, finish grid).
+- Implemented geometry helpers (segment intersection, closest point, track progress “s”, cross-line checks).
+- Built track preview rendering for menus and refined rendering layers to avoid visual glitches.
+Cheat Mode Feature Owned:
+- Teleport (Press T): teleports the player to the next race milestone (checkpoint/near finish) for recovery/testing.
+
+Member 3
+Name       : Md Ahashanul Karim
+Student ID : 22299292
+Contribution:
+- Implemented camera system:
+  - TPP-3D perspective camera and controls
+  - FPP toggle + cockpit overlay + camera smoothing
+- Implemented opponents (spawn, movement along track, lane offsets, finish tracking).
+- Added cheat/debug UI indicators and runtime toggles.
+Cheat Mode Feature Owned:
+- Autopilot (Press P): AI steering + centering logic to keep the car on track, including border-correction behavior.
