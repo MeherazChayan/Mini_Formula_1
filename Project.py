@@ -51,6 +51,28 @@ tpp_pitch_deg = 35.0
 tpp_dist = 1050.0
 tpp_fov = 62.0
 
+# 3D TPP Camera (Assignment-3 style)
+# -----------------------------
+TPP_3D_ENABLED = True
+tpp_yaw_offset = 0.0
+tpp_pitch_deg = 35.0
+tpp_dist = 1050.0
+tpp_fov = 62.0
+
+# First Person View (3D)
+FPP_FOV_DEFAULT = 90.0
+FPP_FOV_MIN = 60.0
+FPP_FOV_MAX = 120.0
+FPP_FOV_STEP = 8.0
+FPP_YAW_STEP = 4.0
+
+FPP_EYE_HEIGHT = 90.0          # Height of driver's eyes above track
+FPP_EYE_BACK_OFFSET = 30.0     # How far behind car center the eyes are
+FPP_LOOK_AHEAD = 400.0         # Distance to look-at point
+FPP_PITCH_DOWN_DEG = 12.0      # Slight downward tilt for road view
+fpp_fov = FPP_FOV_DEFAULT
+
+
 # -----------------------------
 # Cheat mode
 # -----------------------------
@@ -397,17 +419,38 @@ def cur_track():
 # -----------------------------
 def apply_view_transform():
     if fpp_mode:
-        glDisable(GL_DEPTH_TEST)
+        glEnable(GL_DEPTH_TEST)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluOrtho2D(-fpp_view_w*0.5, fpp_view_w*0.5, -fpp_view_h*0.5, fpp_view_h*0.5)
+        aspect = float(WIN_W) / WIN_H if WIN_H > 0 else 1.0
+        gluPerspective(fpp_fov, aspect, 10.0, 6000.0)
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        glTranslatef(0.0, -fpp_view_h * FPP_CAR_SCREEN_OFFSET, 0.0)
-        # manual yaw offset is applied on top of fpp_cam_ang
-        glRotatef(-(fpp_cam_ang + fpp_yaw_offset) + 90.0, 0.0, 0.0, 1.0)
-        glTranslatef(-car_x, -car_y, 0.0)
+
+        # Combined view angle (auto-align + manual yaw offset)
+        view_ang_deg = fpp_cam_ang + fpp_yaw_offset
+        view_rad = math.radians(view_ang_deg)
+        pitch_rad = math.radians(-FPP_PITCH_DOWN_DEG)
+
+        # Forward direction with downward pitch
+        dx = math.cos(view_rad) * math.cos(pitch_rad)
+        dy = math.sin(view_rad) * math.cos(pitch_rad)
+        dz = math.sin(pitch_rad)
+
+        # Eye position (inside the car)
+        eye_x = car_x - math.cos(view_rad) * FPP_EYE_BACK_OFFSET
+        eye_y = car_y - math.sin(view_rad) * FPP_EYE_BACK_OFFSET
+        eye_z = FPP_EYE_HEIGHT
+
+        # Look-at point ahead
+        center_x = eye_x + dx * FPP_LOOK_AHEAD
+        center_y = eye_y + dy * FPP_LOOK_AHEAD
+        center_z = eye_z + dz * FPP_LOOK_AHEAD
+
+        gluLookAt(eye_x, eye_y, eye_z,
+                  center_x, center_y, center_z,
+                  0.0, 0.0, 1.0)
         return
 
     if TPP_3D_ENABLED:
@@ -737,6 +780,7 @@ def reset_game():
     fpp_yaw_offset = 0.0
     fpp_view_w = FPP_VIEW_W
     fpp_view_h = FPP_VIEW_H
+    fpp_fov = FPP_FOV_DEFAULT 
 
 # -----------------------------
 # Player update
@@ -1004,8 +1048,8 @@ def draw_cockpit_overlay():
     draw_rect(cx + 165, base_y + 28, 55, 55, True)
 
     glColor3f(0.90, 0.90, 0.90)
-    draw_stroke_text("FPP VIEW (Right-click to toggle)", WIN_W*0.5, 125, px_height=18, center=True)
-
+    draw_stroke_text("FIRST PERSON VIEW (Press Z to toggle)", WIN_W*0.5, 130, px_height=18, center=True)
+    draw_stroke_text("← → Look around    ↑ ↓ Zoom", WIN_W*0.5, 100, px_height=16, center=True)
 # -----------------------------
 # HUD / Menus
 # -----------------------------
@@ -1277,6 +1321,21 @@ def key_down(k, x, y):
         keys_down.clear()
         fpp_mode = False
         state = STATE_TRACK_MENU
+        # Toggle First Person View with Z
+    if k in ('z', 'Z'):
+        if state == STATE_RACE:
+            fpp_mode = not fpp_mode
+            if fpp_mode:
+                # Reset manual controls when entering FPV
+                fpp_yaw_offset = 0.0
+                fpp_fov = FPP_FOV_DEFAULT
+                # Auto-align camera
+                if cheat_on and cheat_auto:
+                    cx, cy, tx, ty, _ = cur_track().closest_point_and_dist(car_x, car_y)
+                    fpp_cam_ang = math.degrees(math.atan2(ty, tx))
+                else:
+                    fpp_cam_ang = car_ang
+        return
 
 def key_up(k, x, y):
     if isinstance(k, bytes):
@@ -1294,15 +1353,13 @@ def special_down(key, x, y):
     # --- FPP controls ---
     if fpp_mode:
         if key == GLUT_KEY_LEFT:
-            fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset + FPP_YAW_STEP)
-        elif key == GLUT_KEY_RIGHT:
             fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset - FPP_YAW_STEP)
+        elif key == GLUT_KEY_RIGHT:
+            fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset + FPP_YAW_STEP)
         elif key == GLUT_KEY_UP:
-            fpp_view_w = clamp(fpp_view_w - FPP_ZOOM_STEP, FPP_VIEW_MIN_W, FPP_VIEW_MAX_W)
-            fpp_view_h = fpp_view_w * (FPP_VIEW_H / FPP_VIEW_W)
+            fpp_fov = clamp(fpp_fov - FPP_FOV_STEP, FPP_FOV_MIN, FPP_FOV_MAX)   # zoom in
         elif key == GLUT_KEY_DOWN:
-            fpp_view_w = clamp(fpp_view_w + FPP_ZOOM_STEP, FPP_VIEW_MIN_W, FPP_VIEW_MAX_W)
-            fpp_view_h = fpp_view_w * (FPP_VIEW_H / FPP_VIEW_W)
+            fpp_fov = clamp(fpp_fov + FPP_FOV_STEP, FPP_FOV_MIN, FPP_FOV_MAX)   # zoom out
         return
 
     # --- TPP 3D controls ---
@@ -1330,7 +1387,7 @@ def mouse(button, state_btn, x, y):
         return
     if state_btn != GLUT_DOWN:
         return
-    if button == GLUT_RIGHT_BUTTON:
+    #if button == GLUT_RIGHT_BUTTON:
         fpp_mode = not fpp_mode
         if fpp_mode:
             # reset manual camera settings when entering FPP
