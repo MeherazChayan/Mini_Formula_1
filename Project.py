@@ -51,28 +51,6 @@ tpp_pitch_deg = 35.0
 tpp_dist = 1050.0
 tpp_fov = 62.0
 
-# 3D TPP Camera (Assignment-3 style)
-# -----------------------------
-TPP_3D_ENABLED = True
-tpp_yaw_offset = 0.0
-tpp_pitch_deg = 35.0
-tpp_dist = 1050.0
-tpp_fov = 62.0
-
-# First Person View (3D)
-FPP_FOV_DEFAULT = 90.0
-FPP_FOV_MIN = 60.0
-FPP_FOV_MAX = 120.0
-FPP_FOV_STEP = 8.0
-FPP_YAW_STEP = 4.0
-
-FPP_EYE_HEIGHT = 90.0          # Height of driver's eyes above track
-FPP_EYE_BACK_OFFSET = 30.0     # How far behind car center the eyes are
-FPP_LOOK_AHEAD = 400.0         # Distance to look-at point
-FPP_PITCH_DOWN_DEG = 12.0      # Slight downward tilt for road view
-fpp_fov = FPP_FOV_DEFAULT
-
-
 # -----------------------------
 # Cheat mode
 # -----------------------------
@@ -263,6 +241,222 @@ def line_intersection(p1, p2, p3, p4):
     py = ((x1*y2 - y1*x2)*(y3-y4) - (y1-y2)*(x3*y4 - y3*x4)) / den
     return (px, py)
 
+# -----------------------------
+# Track
+# -----------------------------
+class Track:
+    def __init__(self, title, pts, width):
+        self.title = title
+        self.pts = pts[:]
+        self.width = width
+        self.half = width * 0.5
+        self.curb = 26.0
+
+        self.seg_len = []
+        self.cum = [0.0]
+        total = 0.0
+        for i in range(len(self.pts)):
+            x1, y1 = self.pts[i]
+            x2, y2 = self.pts[(i + 1) % len(self.pts)]
+            L = math.hypot(x2-x1, y2-y1)
+            self.seg_len.append(L)
+            total += L
+            self.cum.append(total)
+        self.total = total
+
+        self.left, self.right, self.outL, self.outR = self._build_joined_offsets(miter_limit=2.3)
+
+        self.start_s = 0.0
+        self.cp_s = 0.5 * self.total
+        self.start_line, self.start_tan = self._make_cross_line(self.start_s)
+        self.cp_line, self.cp_tan = self._make_cross_line(self.cp_s)
+
+    def _wrap_s(self, s):
+        if self.total <= 0:
+            return 0.0
+        s %= self.total
+        if s < 0:
+            s += self.total
+        return s
+
+    def point_at_s(self, s):
+        s = self._wrap_s(s)
+        for i in range(len(self.pts)):
+            s0 = self.cum[i]
+            s1 = self.cum[i+1]
+            if s0 <= s <= s1:
+                L = self.seg_len[i]
+                t = 0.0 if L < 1e-9 else (s - s0) / L
+                x1, y1 = self.pts[i]
+                x2, y2 = self.pts[(i + 1) % len(self.pts)]
+                x = x1 + (x2 - x1) * t
+                y = y1 + (y2 - y1) * t
+                tx, ty = unit(x2 - x1, y2 - y1)
+                return x, y, tx, ty
+        x1, y1 = self.pts[0]
+        x2, y2 = self.pts[1]
+        tx, ty = unit(x2 - x1, y2 - y1)
+        return x1, y1, tx, ty
+
+    def _make_cross_line(self, s):
+        x, y, tx, ty = self.point_at_s(s)
+        nx, ny = -ty, tx
+        ax, ay = x + nx * self.half, y + ny * self.half
+        bx, by = x - nx * self.half, y - ny * self.half
+        return ((ax, ay), (bx, by)), (tx, ty)
+
+    def _build_joined_offsets(self, miter_limit=2.3):
+        n = len(self.pts)
+        left = [None]*n
+        right = [None]*n
+        outL = [None]*n
+        outR = [None]*n
+
+        segL = []
+        segR = []
+        for i in range(n):
+            x1, y1 = self.pts[i]
+            x2, y2 = self.pts[(i+1) % n]
+            dx, dy = unit(x2-x1, y2-y1)
+            nx, ny = -dy, dx
+            segL.append(((x1 + nx*self.half, y1 + ny*self.half),
+                         (x2 + nx*self.half, y2 + ny*self.half)))
+            segR.append(((x1 - nx*self.half, y1 - ny*self.half),
+                         (x2 - nx*self.half, y2 - ny*self.half)))
+
+        maxd = miter_limit * self.half
+        for i in range(n):
+            prev = (i - 1) % n
+            cx, cy = self.pts[i]
+
+            A1, A2 = segL[prev]
+            B1, B2 = segL[i]
+            I = line_intersection(A1, A2, B1, B2)
+            if I is None:
+                I = B1
+            vx, vy = I[0] - cx, I[1] - cy
+            dist = math.hypot(vx, vy)
+            if dist > maxd:
+                ux, uy = unit(vx, vy)
+                I = (cx + ux*maxd, cy + uy*maxd)
+            left[i] = I
+
+            A1, A2 = segR[prev]
+            B1, B2 = segR[i]
+            I = line_intersection(A1, A2, B1, B2)
+            if I is None:
+                I = B1
+            vx, vy = I[0] - cx, I[1] - cy
+            dist = math.hypot(vx, vy)
+            if dist > maxd:
+                ux, uy = unit(vx, vy)
+                I = (cx + ux*maxd, cy + uy*maxd)
+            right[i] = I
+
+            lx, ly = left[i]
+            rx, ry = right[i]
+            outL[i] = unit(lx - cx, ly - cy)
+            outR[i] = unit(rx - cx, ry - cy)
+
+        return left, right, outL, outR
+
+    def closest_point_and_dist(self, px, py):
+        best_d2 = 1e30
+        best = (self.pts[0][0], self.pts[0][1], 1.0, 0.0, 0.0)
+
+        for i in range(len(self.pts)):
+            ax, ay = self.pts[i]
+            bx, by = self.pts[(i + 1) % len(self.pts)]
+            abx, aby = bx - ax, by - ay
+            ab2 = abx*abx + aby*aby
+
+            if ab2 < 1e-9:
+                t = 0.0
+                cx, cy = ax, ay
+            else:
+                t = ((px - ax)*abx + (py - ay)*aby) / ab2
+                t = clamp(t, 0.0, 1.0)
+                cx = ax + abx*t
+                cy = ay + aby*t
+
+            dx, dy = px - cx, py - cy
+            d2 = dx*dx + dy*dy
+            if d2 < best_d2:
+                best_d2 = d2
+                tx, ty = unit(abx, aby)
+                best = (cx, cy, tx, ty, math.sqrt(d2))
+
+        return best[0], best[1], best[2], best[3], best[4]
+
+    def closest_s(self, px, py):
+        best_d2 = 1e30
+        best_s = 0.0
+        for i in range(len(self.pts)):
+            ax, ay = self.pts[i]
+            bx, by = self.pts[(i + 1) % len(self.pts)]
+            abx, aby = bx - ax, by - ay
+            ab2 = abx*abx + aby*aby
+
+            if ab2 < 1e-9:
+                t = 0.0
+            else:
+                t = ((px - ax)*abx + (py - ay)*aby) / ab2
+                t = clamp(t, 0.0, 1.0)
+
+            s = self.cum[i] + t * self.seg_len[i]
+
+            cx = ax + (bx - ax) * t
+            cy = ay + (by - ay) * t
+            dx, dy = px - cx, py - cy
+            d2 = dx*dx + dy*dy
+            if d2 < best_d2:
+                best_d2 = d2
+                best_s = s
+
+        return self._wrap_s(best_s), math.sqrt(best_d2)
+
+    def on_track(self, x, y):
+        _, _, _, _, d = self.closest_point_and_dist(x, y)
+        return d <= (self.half - 10.0)
+
+    def constrain_to_track(self, x, y):
+        cx, cy, _, _, d = self.closest_point_and_dist(x, y)
+        allowed = self.half - 10.0
+        if d <= allowed:
+            return x, y, False
+        vx, vy = x - cx, y - cy
+        ux, uy = unit(vx, vy)
+        return cx + ux * allowed, cy + uy * allowed, True
+
+    def draw_finish_grid(self):
+        (a, b) = self.start_line
+        tx, ty = self.start_tan
+        ax, ay = a
+        bx, by = b
+
+        ux, uy = (bx - ax) / FINISH_COLS, (by - ay) / FINISH_COLS
+        vx, vy = (tx * (FINISH_DEPTH / FINISH_ROWS), ty * (FINISH_DEPTH / FINISH_ROWS))
+
+        for j in range(FINISH_ROWS):
+            for i in range(FINISH_COLS):
+                x0 = ax + ux*i + vx*j
+                y0 = ay + uy*i + vy*j
+                x1 = ax + ux*(i+1) + vx*j
+                y1 = ay + uy*(i+1) + vy*j
+                x2 = ax + ux*(i+1) + vx*(j+1)
+                y2 = ay + uy*(i+1) + vy*(j+1)
+                x3 = ax + ux*i + vx*(j+1)
+                y3 = ay + uy*i + vy*(j+1)
+
+                glColor3f(0.95, 0.95, 0.95) if (i + j) % 2 == 0 else glColor3f(0.05, 0.05, 0.05)
+
+                glBegin(GL_QUADS)
+                glVertex2f(x0, y0)
+                glVertex2f(x1, y1)
+                glVertex2f(x2, y2)
+                glVertex2f(x3, y3)
+                glEnd()
+
     def draw(self):
         glPushMatrix()
         glTranslatef(0.0, 0.0, 0.00)
@@ -419,38 +613,17 @@ def cur_track():
 # -----------------------------
 def apply_view_transform():
     if fpp_mode:
-        glEnable(GL_DEPTH_TEST)
+        glDisable(GL_DEPTH_TEST)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        aspect = float(WIN_W) / WIN_H if WIN_H > 0 else 1.0
-        gluPerspective(fpp_fov, aspect, 10.0, 6000.0)
+        gluOrtho2D(-fpp_view_w*0.5, fpp_view_w*0.5, -fpp_view_h*0.5, fpp_view_h*0.5)
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-
-        # Combined view angle (auto-align + manual yaw offset)
-        view_ang_deg = fpp_cam_ang + fpp_yaw_offset
-        view_rad = math.radians(view_ang_deg)
-        pitch_rad = math.radians(-FPP_PITCH_DOWN_DEG)
-
-        # Forward direction with downward pitch
-        dx = math.cos(view_rad) * math.cos(pitch_rad)
-        dy = math.sin(view_rad) * math.cos(pitch_rad)
-        dz = math.sin(pitch_rad)
-
-        # Eye position (inside the car)
-        eye_x = car_x - math.cos(view_rad) * FPP_EYE_BACK_OFFSET
-        eye_y = car_y - math.sin(view_rad) * FPP_EYE_BACK_OFFSET
-        eye_z = FPP_EYE_HEIGHT
-
-        # Look-at point ahead
-        center_x = eye_x + dx * FPP_LOOK_AHEAD
-        center_y = eye_y + dy * FPP_LOOK_AHEAD
-        center_z = eye_z + dz * FPP_LOOK_AHEAD
-
-        gluLookAt(eye_x, eye_y, eye_z,
-                  center_x, center_y, center_z,
-                  0.0, 0.0, 1.0)
+        glTranslatef(0.0, -fpp_view_h * FPP_CAR_SCREEN_OFFSET, 0.0)
+        # manual yaw offset is applied on top of fpp_cam_ang
+        glRotatef(-(fpp_cam_ang + fpp_yaw_offset) + 90.0, 0.0, 0.0, 1.0)
+        glTranslatef(-car_x, -car_y, 0.0)
         return
 
     if TPP_3D_ENABLED:
@@ -780,7 +953,6 @@ def reset_game():
     fpp_yaw_offset = 0.0
     fpp_view_w = FPP_VIEW_W
     fpp_view_h = FPP_VIEW_H
-    fpp_fov = FPP_FOV_DEFAULT 
 
 # -----------------------------
 # Player update
@@ -1048,8 +1220,8 @@ def draw_cockpit_overlay():
     draw_rect(cx + 165, base_y + 28, 55, 55, True)
 
     glColor3f(0.90, 0.90, 0.90)
-    draw_stroke_text("FIRST PERSON VIEW (Press Z to toggle)", WIN_W*0.5, 130, px_height=18, center=True)
-    draw_stroke_text("← → Look around    ↑ ↓ Zoom", WIN_W*0.5, 100, px_height=16, center=True)
+    draw_stroke_text("FPP VIEW (Right-click to toggle)", WIN_W*0.5, 125, px_height=18, center=True)
+
 # -----------------------------
 # HUD / Menus
 # -----------------------------
@@ -1321,21 +1493,6 @@ def key_down(k, x, y):
         keys_down.clear()
         fpp_mode = False
         state = STATE_TRACK_MENU
-        # Toggle First Person View with Z
-    if k in ('z', 'Z'):
-        if state == STATE_RACE:
-            fpp_mode = not fpp_mode
-            if fpp_mode:
-                # Reset manual controls when entering FPV
-                fpp_yaw_offset = 0.0
-                fpp_fov = FPP_FOV_DEFAULT
-                # Auto-align camera
-                if cheat_on and cheat_auto:
-                    cx, cy, tx, ty, _ = cur_track().closest_point_and_dist(car_x, car_y)
-                    fpp_cam_ang = math.degrees(math.atan2(ty, tx))
-                else:
-                    fpp_cam_ang = car_ang
-        return
 
 def key_up(k, x, y):
     if isinstance(k, bytes):
@@ -1353,13 +1510,15 @@ def special_down(key, x, y):
     # --- FPP controls ---
     if fpp_mode:
         if key == GLUT_KEY_LEFT:
-            fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset - FPP_YAW_STEP)
-        elif key == GLUT_KEY_RIGHT:
             fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset + FPP_YAW_STEP)
+        elif key == GLUT_KEY_RIGHT:
+            fpp_yaw_offset = normalize_angle_deg(fpp_yaw_offset - FPP_YAW_STEP)
         elif key == GLUT_KEY_UP:
-            fpp_fov = clamp(fpp_fov - FPP_FOV_STEP, FPP_FOV_MIN, FPP_FOV_MAX)   # zoom in
+            fpp_view_w = clamp(fpp_view_w - FPP_ZOOM_STEP, FPP_VIEW_MIN_W, FPP_VIEW_MAX_W)
+            fpp_view_h = fpp_view_w * (FPP_VIEW_H / FPP_VIEW_W)
         elif key == GLUT_KEY_DOWN:
-            fpp_fov = clamp(fpp_fov + FPP_FOV_STEP, FPP_FOV_MIN, FPP_FOV_MAX)   # zoom out
+            fpp_view_w = clamp(fpp_view_w + FPP_ZOOM_STEP, FPP_VIEW_MIN_W, FPP_VIEW_MAX_W)
+            fpp_view_h = fpp_view_w * (FPP_VIEW_H / FPP_VIEW_W)
         return
 
     # --- TPP 3D controls ---
@@ -1387,7 +1546,7 @@ def mouse(button, state_btn, x, y):
         return
     if state_btn != GLUT_DOWN:
         return
-    #if button == GLUT_RIGHT_BUTTON:
+    if button == GLUT_RIGHT_BUTTON:
         fpp_mode = not fpp_mode
         if fpp_mode:
             # reset manual camera settings when entering FPP
